@@ -1,0 +1,152 @@
+;Turingismus.asm  programa de ejemplo de uso de funciones,
+;     para Linux, Intel, nasm
+;     Descripción: este programa evalúa la función 
+;               --
+;              | 1 si       n = 1
+;      f(n) = <  f(n/2)     si n es par
+;              | f(3*n + 1) en otro caso
+;               --
+;      para n entero, n > 0
+;
+; assemble:    nasm -f elf64 -l t.lst  -o t.o turingismus.asm
+; link:        ld -o t  t.o
+; run:            ./t 
+; output is (hopefully):    Yeap, as far as I could see, it's true. 
+
+.386
+.model flat,stdcall
+.stack 4096
+ExitProcess proto, dwExitCode:dword
+
+int_limit        equ  65535  ; máximo del programa (!), corresponde a 71 llamadas
+
+.data        ; sección de datos inicializados
+    ;printing messages
+msg1    db "Yeap, as far as I could see, it's true",10    ; Resultado exitoso del programa, 10=lf
+len1    equ $-msg1        ; "$" means "here"
+msg2    db "Digite el limite de prueba de los enteros: " ; Solicitud del limite de prueba
+len2    equ $-msg2
+
+
+
+.code        ; code section
+main proc
+    push ax            ; crea campo para el valor de retorno de tryAll
+    push ax            ; crea campo para la variable local de la función
+    call tryAll
+    pop ax            ; mueve a ax basura de pila
+    pop ax            ; ax contiene el valor de retorno
+debug:    
+    cmp ax,0
+    je final
+    
+    then_main:        ; todo salio bien    
+    mov    edx,len1        ; arg3, length of string to print
+    mov    ch,msg1        ; arg2, pointer to string
+    mov    ebx,1        ; arg1, where to write, screen
+    mov    eax,4        ; write sysout command to int 80 hex
+    int    128        ; interrupt 80 hex, call kernel
+
+    ; "writeln" de que la comprobación fue exitosa
+    invoke ExitProcess, 0
+
+final:    
+    mov    ebx,0        ; exit code, 0=normal
+    mov    eax,1        ; exit command to kernel
+    int    128        ; interrupt 80 hex, call kernel
+
+; Funciones: 
+tryAll:             ; int tryAll()  Prueba todos los enteros entre 1 y n
+
+                    ; esp+12: memoria local del maximo del conjunto (futuro)
+                       ; esp+10: palabra de valor de retorno  
+                    ; esp+8:  valor entero local i
+                     
+    mov ebp, esp
+
+    ; Pide el limite al usuario: n
+;    mov edx,len2
+;    mov ecx,msg2
+;    mov ebx,1
+;    mov eax,4
+
+    ;for i:= 1 to n ...
+    mov ax,1            ;inicializa i en los regs. (ax)
+    mov dword ptr [ebp+8],eax        ;y en memoria local
+    mov cx,int_limit    ;límite del "for" *debería ser el n
+
+for_1:
+        ; prepara la llamada a "verified"
+        
+        push ax                ; pone el parámetro "i"
+        push ax
+        push ax                ; crea campo para el valor de retorno de verified
+        mov di,0
+        push ax
+        push ax
+        call verified
+        
+        ; restaurando la pila
+        pop si                ; r8 contiene el valor de retorno
+        pop di                ; r9 contiene basura de pila
+        mov ebp,esp            ; restaura el puntero base de la pila
+        
+        cmp si,0
+        jne siga_verificando
+            mov word ptr [ebp+10],0    ; la función tryAll regresa "falso"
+            ret
+            
+        siga_verificando:
+        mov ax,[ebp+10]      ; "rescata" el valor de i,
+        inc ax                ;   lo incrementa y
+        mov [ebp+10],ax        ;   lo actualiza en memoria local
+        loop for_1
+        
+        mov word ptr [ebp+10],1 
+    
+ret
+    
+verified:
+    mov ebp,esp
+    cmp ax, 0
+    jne con_pop
+        pop eax
+    con_pop:
+        pop ax 
+        cmp di,0
+
+    cmp si,1                ; caso 1: n = 1
+    jne comprueba_par
+        mov word ptr [ebp+10],1  ; valor de retorno = true (1) *definir como constante
+        ret
+    comprueba_par:
+        mov dx,1            ;caso 2: x es par 
+        and dx,si            ;(inspecciona el bit más a la derecha
+        cmp dx,1            ;  de si)
+        je es_impar
+            sar si,1        ; division entera entre 2
+            mov ax, 0
+            push ax
+            call verified    ; Llamada recursiva a verified (caso 2: x par)
+            ret
+        es_impar:
+            mov ax,3
+            mul si
+            mov si,ax
+            inc si
+            mov ax, 0
+            push ax
+            call verified        ; Llamada recursiva a verified (caso 3: x impar)
+            ret
+
+ret
+
+        getint: ; función ingenua para leer un número del teclado
+        ; parámetro: rsp+8: *buffer_teclado
+        ; ret_val:   rsp+16: (int) entero leído
+
+ret
+
+invoke ExitProcess, 0
+        main endp
+end main
